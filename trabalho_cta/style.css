@@ -1,0 +1,139 @@
+/* -------------------- BODY -------------------- */
+body {
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  margin: 0;
+  background: linear-gradient(135deg, #4facfe, #00f2fe);
+  min-height: 100vh;
+}
+
+/* -------------------- CONTAINER -------------------- */
+.container {
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+/* -------------------- FORMULÁRIO -------------------- */
+.form-area {
+  flex: 2;
+  background: #fff;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+}
+
+label {
+  font-weight: 600;
+  color: #555;
+}
+
+input, textarea {
+  width: 100%;
+  padding: 10px 12px;
+  margin: 6px 0 12px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+}
+
+input:focus, textarea:focus {
+  border-color: #4facfe;
+  outline: none;
+  box-shadow: 0 0 8px rgba(79,172,254,0.3);
+}
+
+textarea {
+  resize: none;
+}
+
+button {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #4facfe, #00c6ff);
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.erro {
+  color: #e74c3c;
+  font-size: 13px;
+  margin-top: -8px;
+  margin-bottom: 8px;
+}
+
+#contador {
+  text-align: right;
+  font-size: 12px;
+  color: #777;
+  margin-bottom: 10px;
+}
+
+/* -------------------- LISTA LATERAL -------------------- */
+.lista-contatos {
+  flex: 1;
+  max-width: 350px;
+  background: #ffffffdd;
+  padding: 20px;
+  border-radius: 12px;
+  overflow-y: auto;
+  max-height: 80vh;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.lista-contatos h2 {
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+/* CARTÃO DE CONTATO */
+.contato-card {
+  border-bottom: 1px solid #ccc;
+  padding: 10px 0;
+}
+
+.contato-card strong {
+  font-size: 16px;
+  color: #333;
+}
+
+.contato-card small {
+  display: block;
+  color: #777;
+  font-size: 12px;
+}
+
+.contato-card p {
+  margin: 5px 0 0;
+  font-size: 14px;
+  color: #555;
+}
+
+/* -------------------- RESPONSIVO -------------------- */
+@media (max-width: 900px) {
+  .container {
+    flex-direction: column;
+    padding: 15px;
+  }
+  
+  .form-area, .lista-contatos {
+    flex: 1;
+    max-width: 100%;
+  }
+  
+  .lista-contatos {
+    max-height: none;
+    margin-top: 20px;
+  }
+}
