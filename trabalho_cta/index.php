@@ -22,91 +22,128 @@ try {
     die("Erro na conexão: " . $e->getMessage());
 }
 
-// -------------------- FUNÇÃO SANITIZAR --------------------
 function sanitizar($dado) {
     return htmlspecialchars(trim($dado), ENT_QUOTES, 'UTF-8');
 }
 
-// -------------------- MENSAGEM DE SUCESSO --------------------
-$mensagem_sucesso = '';
+// -------------------- DELETAR --------------------
+if (isset($_POST['deletar'])) {
+    $id = (int) $_POST['deletar'];
 
+    $stmt = $pdo->prepare("DELETE FROM contatos WHERE id = :id");
+    $stmt->execute([":id" => $id]);
 
-// -------------------- PROCESSA FORMULÁRIO --------------------
-$erros = [];
+    header("Location: " . $_SERVER['PHP_SELF']);
+    exit;
+}
+
+// -------------------- EDITAR --------------------
+$editando = false;
+$edit_id = null;
 $nome = $email = $mensagem = '';
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
+if (isset($_GET['editar'])) {
+    $edit_id = (int) $_GET['editar'];
+
+    $stmt = $pdo->prepare("SELECT * FROM contatos WHERE id = :id");
+    $stmt->execute([":id" => $edit_id]);
+    $dados = $stmt->fetch();
+
+    if ($dados) {
+        $nome = $dados['nome'];
+        $email = $dados['email'];
+        $mensagem = $dados['mensagem'];
+        $editando = true;
+    }
+}
+
+// -------------------- FORM --------------------
+$erros = [];
+
+if ($_SERVER["REQUEST_METHOD"] === "POST" && !isset($_POST['deletar'])) {
+
     $nome = sanitizar($_POST["nome"] ?? "");
     $email = strtolower(trim($_POST["email"] ?? ""));
     $senha = $_POST["senha"] ?? "";
     $mensagem = sanitizar($_POST["mensagem"] ?? "");
 
-    // validações
     if (strlen($nome) < 1) $erros[] = "Nome inválido";
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $erros[] = "Email inválido";
-    if (
-        strlen($senha) < 8 ||
-        !preg_match('/[A-Z]/', $senha) ||
-        !preg_match('/[a-z]/', $senha) ||
-        !preg_match('/[0-9]/', $senha) ||
-        !preg_match('/[!@#$%^&*]/', $senha)
-    ) $erros[] = "Senha fraca";
-
     if (strlen($mensagem) > 250) $erros[] = "Mensagem muito longa";
+
+    if (!$editando) {
+        if (
+            strlen($senha) < 8 ||
+            !preg_match('/[A-Z]/', $senha) ||
+            !preg_match('/[a-z]/', $senha) ||
+            !preg_match('/[0-9]/', $senha) ||
+            !preg_match('/[!@#$%^&*]/', $senha)
+        ) $erros[] = "Senha fraca";
+    }
 
     if (empty($erros)) {
 
-        // Verifica se email já existe
-        $stmt = $pdo->prepare("SELECT senha FROM contatos WHERE email = :email LIMIT 1");
-        $stmt->execute([":email" => $email]);
-        $usuario = $stmt->fetch();
+        if (isset($_POST['edit_id'])) {
 
-        if ($usuario) {
-            if (!password_verify($senha, $usuario['senha'])) {
-                $erros[] = "Senha incorreta para este email!";
-            }
-        }
+            $id = (int) $_POST['edit_id'];
 
-        if (empty($erros)) {
-
-            $senhaHash = $usuario
-                ? $usuario['senha']
-                : password_hash($senha, PASSWORD_DEFAULT);
-
-            // Evita mensagem duplicada (extra proteção)
+            // bloqueia duplicada
             $stmt = $pdo->prepare("
                 SELECT COUNT(*) FROM contatos 
-                WHERE email = :email AND mensagem = :mensagem
+                WHERE mensagem = :mensagem AND id != :id
             ");
             $stmt->execute([
-                ":email" => $email,
-                ":mensagem" => $mensagem
+                ":mensagem" => $mensagem,
+                ":id" => $id
             ]);
 
-            if ($stmt->fetchColumn() > 0) {
-                $erros[] = "Mensagem já enviada!";
-            } else {
+            if ($stmt->fetchColumn() == 0) {
 
-                $sql = "INSERT INTO contatos (nome, email, senha, mensagem) 
-                        VALUES (:nome, :email, :senha, :mensagem)";
-                $stmt = $pdo->prepare($sql);
+                $stmt = $pdo->prepare("
+                    UPDATE contatos 
+                    SET mensagem = :mensagem 
+                    WHERE id = :id
+                ");
+
+                $stmt->execute([
+                    ":mensagem" => $mensagem,
+                    ":id" => $id
+                ]);
+            }
+
+        } else {
+
+            $stmt = $pdo->prepare("SELECT senha FROM contatos WHERE email = :email LIMIT 1");
+            $stmt->execute([":email" => $email]);
+            $usuario = $stmt->fetch();
+
+            if (!$usuario || password_verify($senha, $usuario['senha'])) {
+
+                $senhaHash = $usuario
+                    ? $usuario['senha']
+                    : password_hash($senha, PASSWORD_DEFAULT);
+
+                $stmt = $pdo->prepare("
+                    INSERT INTO contatos (nome, email, senha, mensagem)
+                    VALUES (:nome, :email, :senha, :mensagem)
+                ");
+
                 $stmt->execute([
                     ":nome" => $nome,
                     ":email" => $email,
                     ":senha" => $senhaHash,
                     ":mensagem" => $mensagem
                 ]);
-
-                // 🔥 REDIRECIONAMENTO (PRG)
-                header("Location: " . $_SERVER['PHP_SELF'] . "?sucesso=1");
-                exit;
             }
         }
+
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit;
     }
 }
 
-// -------------------- BUSCA CONTATOS --------------------
-$stmt = $pdo->query("SELECT nome, email, mensagem FROM contatos ORDER BY criado_em DESC");
+// -------------------- LISTA --------------------
+$stmt = $pdo->query("SELECT id, nome, email, mensagem FROM contatos ORDER BY criado_em DESC");
 $contatos = $stmt->fetchAll();
 ?>
 
@@ -114,191 +151,80 @@ $contatos = $stmt->fetchAll();
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Formulário + Lista</title>
-<style>
-/* ==================== CSS ==================== */
-body {
-  font-family: 'Segoe UI', Tahoma, sans-serif;
-  margin: 0;
-  background: linear-gradient(135deg, #4facfe, #00f2fe);
-  min-height: 100vh;
-}
+<title>Formulário</title>
 
-.container {
-  display: flex;
-  gap: 20px;
-  padding: 20px;
-  align-items: flex-start;
-  flex-wrap: wrap;
-}
+<!-- 🔥 CSS EXTERNO -->
+<link rel="stylesheet" href="style.css">
 
-.form-area {
-  flex: 2;
-  background: #fff;
-  padding: 30px;
-  border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.15);
-}
-
-label {
-  font-weight: 600;
-  color: #555;
-}
-
-input, textarea {
-  width: 100%;
-  padding: 10px 12px;
-  margin: 6px 0 12px;
-  border-radius: 8px;
-  border: 1px solid #ccc;
-  font-size: 14px;
-}
-
-input:focus, textarea:focus {
-  border-color: #4facfe;
-  outline: none;
-  box-shadow: 0 0 8px rgba(79,172,254,0.3);
-}
-
-textarea {
-  resize: none;
-}
-
-button {
-  width: 100%;
-  padding: 12px;
-  border: none;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #4facfe, #00c6ff);
-  color: white;
-  font-size: 16px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: 0.3s;
-}
-
-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-}
-
-.erro {
-  color: #e74c3c;
-  font-size: 13px;
-  margin-top: -8px;
-  margin-bottom: 8px;
-}
-
-#contador {
-  text-align: right;
-  font-size: 12px;
-  color: #777;
-  margin-bottom: 10px;
-}
-
-.lista-contatos {
-  flex: 1;
-  max-width: 350px;
-  background: #ffffffdd;
-  padding: 20px;
-  border-radius: 12px;
-  overflow-y: auto;
-  max-height: 80vh;
-  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-}
-
-.lista-contatos h2 {
-  text-align: center;
-  margin-bottom: 15px;
-}
-
-.contato-card {
-  border-bottom: 1px solid #ccc;
-  padding: 10px 0;
-}
-
-.contato-card strong {
-  font-size: 16px;
-  color: #333;
-}
-
-.contato-card small {
-  display: block;
-  color: #777;
-  font-size: 12px;
-}
-
-.contato-card p {
-  margin: 5px 0 0;
-  font-size: 14px;
-  color: #555;
-}
-.sucesso { color: green; font-weight: bold; margin-bottom: 10px; }
-</style>
 </head>
 <body>
+
 <div class="container">
 
-  <!-- FORMULÁRIO -->
-  <div class="form-area">
-    <h2>Formulário de Contato</h2>
+<div class="form-area">
+<h2><?= $editando ? "Editar Mensagem" : "Formulário" ?></h2>
 
-    <?php if ($mensagem_sucesso): ?>
-      <div class="sucesso"><?= $mensagem_sucesso ?></div>
-    <?php endif; ?>
+<?php foreach ($erros as $e): ?>
+<p class="erro"><?= $e ?></p>
+<?php endforeach; ?>
 
-    <?php if (!empty($erros)): ?>
-      <div class="erros">
-        <?php foreach ($erros as $e): ?>
-          <p><?= $e ?></p>
-        <?php endforeach; ?>
-      </div>
-    <?php endif; ?>
+<form method="POST">
 
-    <form id="formulario" method="POST">
-      <label>Nome:</label>
-      <input type="text" name="nome" id="nome" required value="<?= $nome ?>">
+<?php if ($editando): ?>
+<input type="hidden" name="edit_id" value="<?= $edit_id ?>">
+<?php endif; ?>
 
-      <label>Email:</label>
-      <input type="email" name="email" id="email" required value="<?= $email ?>">
+<label>Nome</label>
+<input type="text" name="nome" value="<?= $nome ?>" <?= $editando ? 'readonly' : '' ?>>
 
-      <label>Senha:</label>
-      <input type="password" name="senha" id="senha" required>
+<label>Email</label>
+<input type="email" name="email" value="<?= $email ?>" <?= $editando ? 'readonly' : '' ?>>
 
-      <label>Mensagem:</label>
-      <textarea name="mensagem" id="mensagem" maxlength="250" required><?= $mensagem ?></textarea>
-      <div id="contador"><?= strlen($mensagem) ?> / 250</div>
+<?php if (!$editando): ?>
+<label>Senha</label>
+<input type="password" name="senha">
+<?php endif; ?>
 
-      <button type="submit">Enviar</button>
-    </form>
-  </div>
+<label>Mensagem</label>
+<textarea name="mensagem" maxlength="250"><?= $mensagem ?></textarea>
 
-  <!-- LISTA LATERAL -->
-  <div class="lista-contatos">
-    <h2>Mensagens Recebidas</h2>
-    <?php if ($contatos): ?>
-      <?php foreach ($contatos as $c): ?>
-        <div class="contato-card">
-          <strong><?= htmlspecialchars($c['nome']) ?></strong><br>
-          <small><?= htmlspecialchars($c['email']) ?></small>
-          <p><?= nl2br(htmlspecialchars($c['mensagem'])) ?></p>
-        </div>
-      <?php endforeach; ?>
-    <?php else: ?>
-      <p>Nenhum contato ainda.</p>
-    <?php endif; ?>
-  </div>
+<button type="submit">
+<?= $editando ? "Atualizar" : "Enviar" ?>
+</button>
+
+</form>
+</div>
+
+<div class="lista-contatos">
+<h2>Mensagens</h2>
+
+<?php foreach ($contatos as $c): ?>
+<div class="contato-card">
+
+<strong><?= htmlspecialchars($c['nome']) ?></strong>
+<small><?= htmlspecialchars($c['email']) ?></small>
+<p><?= nl2br(htmlspecialchars($c['mensagem'])) ?></p>
+
+<div class="acoes">
+
+<form method="GET" style="display:inline;">
+<input type="hidden" name="editar" value="<?= $c['id'] ?>">
+<button class="btn-editar">Editar</button>
+</form>
+
+<form method="POST" style="display:inline;" onsubmit="return confirm('Excluir?')">
+<input type="hidden" name="deletar" value="<?= $c['id'] ?>">
+<button class="btn-deletar">Deletar</button>
+</form>
 
 </div>
 
-<script>
-// ==================== JS ====================
-const mensagemInput = document.getElementById("mensagem");
-const contador = document.getElementById("contador");
+</div>
+<?php endforeach; ?>
 
-mensagemInput.addEventListener("input", () => {
-  contador.textContent = `${mensagemInput.value.length} / 250`;
-});
-</script>
+</div>
+
+</div>
+
 </body>
 </html>
