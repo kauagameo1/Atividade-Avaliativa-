@@ -1,4 +1,6 @@
 <?php
+session_start();
+
 // -------------------- CONEXÃO PDO --------------------
 $host = "localhost";
 $db   = "formulario";
@@ -25,8 +27,11 @@ function sanitizar($dado) {
     return htmlspecialchars(trim($dado), ENT_QUOTES, 'UTF-8');
 }
 
-// -------------------- PROCESSA FORMULÁRIO --------------------
+// -------------------- MENSAGEM DE SUCESSO --------------------
 $mensagem_sucesso = '';
+
+
+// -------------------- PROCESSA FORMULÁRIO --------------------
 $erros = [];
 $nome = $email = $mensagem = '';
 
@@ -36,26 +41,67 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $senha = $_POST["senha"] ?? "";
     $mensagem = sanitizar($_POST["mensagem"] ?? "");
 
-    // validações PHP
+    // validações
     if (strlen($nome) < 1) $erros[] = "Nome inválido";
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $erros[] = "Email inválido";
-    if (strlen($senha) < 8 || !preg_match('/[A-Z]/', $senha) || !preg_match('/[a-z]/', $senha) ||
-        !preg_match('/[0-9]/', $senha) || !preg_match('/[!@#$%^&*]/', $senha)) $erros[] = "Senha fraca";
+    if (
+        strlen($senha) < 8 ||
+        !preg_match('/[A-Z]/', $senha) ||
+        !preg_match('/[a-z]/', $senha) ||
+        !preg_match('/[0-9]/', $senha) ||
+        !preg_match('/[!@#$%^&*]/', $senha)
+    ) $erros[] = "Senha fraca";
+
     if (strlen($mensagem) > 250) $erros[] = "Mensagem muito longa";
 
     if (empty($erros)) {
-        $senhaHash = password_hash($senha, PASSWORD_DEFAULT);
-        $sql = "INSERT INTO contatos (nome, email, senha, mensagem) 
-                VALUES (:nome, :email, :senha, :mensagem)";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
-            ":nome" => $nome,
-            ":email" => $email,
-            ":senha" => $senhaHash,
-            ":mensagem" => $mensagem
-        ]);
-        $mensagem_sucesso = "Dados salvos com sucesso!";
-        $nome = $email = $mensagem = ''; // limpa campos
+
+        // Verifica se email já existe
+        $stmt = $pdo->prepare("SELECT senha FROM contatos WHERE email = :email LIMIT 1");
+        $stmt->execute([":email" => $email]);
+        $usuario = $stmt->fetch();
+
+        if ($usuario) {
+            if (!password_verify($senha, $usuario['senha'])) {
+                $erros[] = "Senha incorreta para este email!";
+            }
+        }
+
+        if (empty($erros)) {
+
+            $senhaHash = $usuario
+                ? $usuario['senha']
+                : password_hash($senha, PASSWORD_DEFAULT);
+
+            // Evita mensagem duplicada (extra proteção)
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*) FROM contatos 
+                WHERE email = :email AND mensagem = :mensagem
+            ");
+            $stmt->execute([
+                ":email" => $email,
+                ":mensagem" => $mensagem
+            ]);
+
+            if ($stmt->fetchColumn() > 0) {
+                $erros[] = "Mensagem já enviada!";
+            } else {
+
+                $sql = "INSERT INTO contatos (nome, email, senha, mensagem) 
+                        VALUES (:nome, :email, :senha, :mensagem)";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([
+                    ":nome" => $nome,
+                    ":email" => $email,
+                    ":senha" => $senhaHash,
+                    ":mensagem" => $mensagem
+                ]);
+
+                // 🔥 REDIRECIONAMENTO (PRG)
+                header("Location: " . $_SERVER['PHP_SELF'] . "?sucesso=1");
+                exit;
+            }
+        }
     }
 }
 
